@@ -57,7 +57,7 @@ function combinedBagSnapshot(snapshotsBySite) {
 
   return {
     site: "combined",
-    label: labels.length ? labels.join(" + ") : "InMyCart",
+    label: labels.length ? labels.join(" + ") : "CartPeek",
     url: "",
     parsedAt: latestReceivedAt || new Date().toISOString(),
     receivedAt: latestReceivedAt || new Date().toISOString(),
