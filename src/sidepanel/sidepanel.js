@@ -11,8 +11,6 @@ const elements = {
   physicsStage: document.querySelector("#physicsStage"),
   physicsItems: document.querySelector("#physicsItems"),
   bagEmpty: document.querySelector("#bagEmpty"),
-  insights: document.querySelector("#insights"),
-  parserLabel: document.querySelector("#parserLabel"),
   itemsList: document.querySelector("#itemsList"),
   refreshButton: document.querySelector("#refreshButton"),
   itemTemplate: document.querySelector("#itemTemplate")
@@ -51,27 +49,6 @@ function cartTotal(items) {
     const value = parseWon(item.price);
     return Number.isFinite(value) ? sum + value * (item.quantity || 1) : sum;
   }, 0);
-}
-
-function buildInsights(snapshot) {
-  const items = snapshot?.items || [];
-  if (!items.length) {
-    return ["장바구니 아이템을 찾으면 가방 안에 사진이 담깁니다."];
-  }
-
-  const total = cartTotal(items);
-  const insights = [`지금 가방 안에는 ${items.length}개의 아이템이 있습니다.`];
-
-  if (total > 0) {
-    insights.push(`인식된 가격 기준 합계는 ${formatWon(total)}입니다.`);
-  }
-
-  const categories = items.map((item) => item.category).filter(Boolean);
-  if (categories.length) {
-    insights.push(`${new Set(categories).size}개의 카테고리가 담겨 있습니다.`);
-  }
-
-  return insights;
 }
 
 function itemKey(item) {
@@ -534,15 +511,8 @@ function renderSnapshot(snapshot) {
   elements.itemCount.textContent = String(items.length);
   elements.bagCount.textContent = `${items.length} item${items.length === 1 ? "" : "s"}`;
   elements.bagTotal.textContent = total > 0 ? formatWon(total) : "가격 대기중";
-  elements.parserLabel.textContent = snapshot?.parserVersion || "";
 
   syncPhysicsBag(items);
-
-  elements.insights.replaceChildren(...buildInsights(snapshot).map((text) => {
-    const li = document.createElement("li");
-    li.textContent = text;
-    return li;
-  }));
 
   if (!items.length) {
     const empty = document.createElement("div");
