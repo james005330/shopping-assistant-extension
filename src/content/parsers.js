@@ -23,6 +23,13 @@
     return cleanText(root.getAttribute(`data-${name}`));
   }
 
+  function formatWonFromData(value) {
+    const number = Number(cleanText(value));
+    return Number.isFinite(number) && number > 0
+      ? `${number.toLocaleString("ko-KR")}원`
+      : "";
+  }
+
   function firstImage(root) {
     const image = root.querySelector("img[src], img[data-src], img[data-original]");
     const src = image?.getAttribute("src") || image?.getAttribute("data-src") || image?.getAttribute("data-original");
@@ -30,7 +37,7 @@
   }
 
   function firstLink(root) {
-    const anchor = root.querySelector("a[href*='/app/goods/'], a[href*='/products/'], a[href]");
+    const anchor = root.matches?.("a[href]") ? root : root.querySelector("a[href*='/app/goods/'], a[href*='/products/'], a[href]");
     return anchor?.href || "";
   }
 
@@ -86,27 +93,98 @@
     return nodes.filter((node) => {
       const text = cleanText(node.innerText || node.textContent);
       const dataName = dataText(node, "item-name");
-      const hasProductLink = Boolean(node.querySelector("a[href*='/app/goods/'], a[href*='/products/']"));
-      const hasPrice = WON_PRICE_PATTERN.test(text) || GLOBAL_PRICE_PATTERN.test(text);
+      const hasProductLink = Boolean(node.matches?.("a[href*='/app/goods/'], a[href*='/products/']") || node.querySelector("a[href*='/app/goods/'], a[href*='/products/']"));
+      const hasPrice = dataText(node, "price") || WON_PRICE_PATTERN.test(text) || GLOBAL_PRICE_PATTERN.test(text);
       return dataName || (text.length > 12 && (hasProductLink || hasPrice));
     });
   }
 
-  function findCandidateRows() {
-    const cartDataRows = validCandidateRows(collectRows([
-      "[data-item-list-id='cart_list']",
-      "[data-item-list-id='cart']",
-      "[data-item-list-id*='cart'][data-item-name]",
-      "[data-item-id][data-item-name][data-item-list-id*='cart']"
-    ]));
-
-    if (cartDataRows.length) {
-      return cartDataRows;
+  function groupRowsByItemId(rows) {
+    const groups = new Map();
+    for (const row of rows) {
+      const key = dataText(row, "item-id") || stableId([
+        dataText(row, "item-name"),
+        firstLink(row),
+        firstImage(row)
+      ]);
+      if (!key) {
+        continue;
+      }
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      groups.get(key).push(row);
     }
+    return [...groups.values()];
+  }
 
+  function parseItemFromRows(rows) {
+    const primary = rows.find((row) => dataText(row, "item-name")) || rows[0];
+    const imageRow = rows.find((row) => firstImage(row)) || primary;
+    const linkRow = rows.find((row) => firstLink(row)) || primary;
+    const textRow = rows.find((row) => cleanText(row.innerText || row.textContent)) || primary;
+
+    const name = dataText(primary, "item-name") || firstText(textRow, [
+      "[data-testid*='goods'][data-testid*='name']",
+      "[class*='goods'][class*='name']",
+      "[class*='Goods'][class*='Name']",
+      "[class*='product'][class*='name']",
+      "[class*='Product'][class*='Name']",
+      "a[href*='/app/goods/']",
+      "a[href*='/products/']"
+    ]);
+
+    const brand = dataText(primary, "item-brand") || firstText(textRow, [
+      "[data-testid*='brand']",
+      "[class*='brand']",
+      "[class*='Brand']"
+    ]);
+
+    const option = dataText(primary, "item-variant").replace(/\^/g, " / ") || firstText(textRow, [
+      "[data-testid*='option']",
+      "[class*='option']",
+      "[class*='Option']",
+      "[class*='size']",
+      "[class*='Size']"
+    ]);
+
+    const price = formatWonFromData(dataText(primary, "price")) || firstText(textRow, [
+      "[data-testid*='price']",
+      "[class*='price']",
+      "[class*='Price']",
+      "[class*='amount']",
+      "[class*='Amount']"
+    ]) || textPrice(textRow);
+
+    const quantityText = dataText(primary, "quantity") || firstText(textRow, [
+      "input[type='number']",
+      "[data-testid*='quantity']",
+      "[class*='quantity']",
+      "[class*='Quantity']"
+    ]);
+
+    return {
+      id: dataText(primary, "item-id") || stableId([name, brand, option, price, firstLink(linkRow)]),
+      name,
+      brand,
+      option,
+      price,
+      quantity: parseNumberFromText(quantityText, 1),
+      imageUrl: firstImage(imageRow),
+      url: firstLink(linkRow)
+    };
+  }
+
+  function findCartRows() {
+    return validCandidateRows(collectRows([
+      "[data-section-name='cart_list'][data-item-list-id='cart_list'][data-item-id]",
+      "[data-item-list-id='cart_list'][data-item-id]",
+      "[data-section-name='cart_list'][data-item-id]"
+    ]));
+  }
+
+  function findFallbackRows() {
     const fallbackSelectors = [
-      "[data-item-id][data-item-name]",
-      "[data-item-name]",
       "[data-cart-item-id]",
       "[data-cart-no]",
       "[data-goods-no]",
@@ -119,63 +197,24 @@
       "li:has(a[href*='/products/'])"
     ];
 
-    return validCandidateRows(collectRows(fallbackSelectors));
+    return validCandidateRows(collectRows(fallbackSelectors)).filter((row) => {
+      const itemListId = dataText(row, "item-list-id");
+      const sectionName = dataText(row, "section-name");
+      return !itemListId.startsWith("cart_rec") && !sectionName.startsWith("cart_rec");
+    });
+  }
+
+  function findCandidateRows() {
+    const cartDataRows = findCartRows();
+    return cartDataRows.length ? cartDataRows : findFallbackRows();
   }
 
   function parseMusinsaCart() {
     const rows = findCandidateRows();
+    const groupedRows = groupRowsByItemId(rows);
 
-    const items = rows.map((row) => {
-      const name = dataText(row, "item-name") || firstText(row, [
-        "[data-testid*='goods'][data-testid*='name']",
-        "[class*='goods'][class*='name']",
-        "[class*='Goods'][class*='Name']",
-        "[class*='product'][class*='name']",
-        "[class*='Product'][class*='Name']",
-        "a[href*='/app/goods/']",
-        "a[href*='/products/']"
-      ]);
-
-      const brand = dataText(row, "item-brand") || firstText(row, [
-        "[data-testid*='brand']",
-        "[class*='brand']",
-        "[class*='Brand']"
-      ]);
-
-      const option = dataText(row, "item-variant").replace(/\^/g, " / ") || firstText(row, [
-        "[data-testid*='option']",
-        "[class*='option']",
-        "[class*='Option']",
-        "[class*='size']",
-        "[class*='Size']"
-      ]);
-
-      const price = firstText(row, [
-        "[data-testid*='price']",
-        "[class*='price']",
-        "[class*='Price']",
-        "[class*='amount']",
-        "[class*='Amount']"
-      ]) || textPrice(row);
-
-      const quantityText = dataText(row, "quantity") || firstText(row, [
-        "input[type='number']",
-        "[data-testid*='quantity']",
-        "[class*='quantity']",
-        "[class*='Quantity']"
-      ]);
-
-      return {
-        id: dataText(row, "item-id") || stableId([name, brand, option, price, firstLink(row)]),
-        name,
-        brand,
-        option,
-        price,
-        quantity: parseNumberFromText(quantityText, 1),
-        imageUrl: firstImage(row),
-        url: firstLink(row)
-      };
-    }).filter((item) => item.name || item.price || item.url);
+    const items = groupedRows.map(parseItemFromRows)
+      .filter((item) => item.name || item.price || item.url);
 
     return {
       site: "musinsa",
@@ -183,7 +222,7 @@
       url: location.href,
       parsedAt: new Date().toISOString(),
       items: dedupeItems(items),
-      parserVersion: "musinsa.data-item.v2"
+      parserVersion: "musinsa.cart-list.v3"
     };
   }
 
