@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Cart Lens MVP",
-  "description": "Reads a shopping cart page and shows the items in a Chrome side panel.",
-  "version": "0.1.0",
+  "name": "InMyCart",
+  "description": "Turns shopping cart items into a visual bag in Chrome's side panel.",
+  "version": "0.2.0",
   "minimum_chrome_version": "116",
   "permissions": ["activeTab", "sidePanel", "storage", "tabs"],
   "host_permissions": [
@@ -10,7 +10,7 @@
     "https://*.musinsa.com/*"
   ],
   "action": {
-    "default_title": "Open Cart Lens"
+    "default_title": "Open InMyCart"
   },
   "background": {
     "service_worker": "src/background/service-worker.js",
