@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "InMyCart",
+  "name": "CartPeek",
   "description": "Turns shopping cart items into a visual bag in Chrome's side panel.",
   "version": "0.4.0",
   "minimum_chrome_version": "116",
@@ -12,7 +12,7 @@
     "https://*.oliveyoung.co.kr/*"
   ],
   "action": {
-    "default_title": "Open InMyCart"
+    "default_title": "Open CartPeek"
   },
   "background": {
     "service_worker": "src/background/service-worker.js",
