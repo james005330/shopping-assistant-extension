@@ -12,7 +12,7 @@ InMyCart는 쇼핑몰 장바구니에 담긴 아이템을 Chrome 오른쪽 Side 
 - 실제 장바구니 영역인 `cart_list`만 읽고 추천 영역인 `cart_rec_one`, `cart_rec_two`는 제외
 - 장바구니 상품명, 브랜드, 옵션, 가격, 수량, 이미지, 링크 추출
 - 같은 상품이 썸네일/상품명 링크로 중복 잡히는 경우 `data-item-id` 기준으로 병합
-- Matter.js 기반 My Bag 물리 공간
+- Matter.js 기반 My Bag 물리 공간: 테두리 박스 전체를 하나의 가방처럼 사용
 - 장바구니 아이템 사진이 위에서 떨어지고, 서로 부딪히고, 가방 벽/바닥과 충돌
 - 가방 안 상품 사진 드래그 및 던지기
 - content script, background service worker, side panel 간 메시지 통신
@@ -60,4 +60,4 @@ MUSINSA의 실제 장바구니 상품은 현재 `data-item-list-id="cart_list"`�
 
 상품이 비어 있거나 일부 필드가 비면 `src/content/parsers.js`의 MUSINSA 파서에 실제 페이지에서 확인한 `data-*` 속성이나 셀렉터를 추가하면 됩니다.
 
-My Bag 물리 UI는 `src/sidepanel/sidepanel.js`의 Matter.js 월드에서 관리합니다. 상품 DOM은 Matter body의 위치와 각도를 매 프레임 따라가며, 가방의 바닥과 양쪽 벽은 보이지 않는 static body로 구성되어 있습니다.
+My Bag 물리 UI는 `src/sidepanel/sidepanel.js`의 Matter.js 월드에서 관리합니다. 상품 DOM은 Matter body의 위치와 각도를 매 프레임 따라가며, 테두리 박스의 바닥과 양쪽 벽은 보이지 않는 static body로 구성되어 있습니다.
