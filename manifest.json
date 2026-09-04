@@ -2,12 +2,14 @@
   "manifest_version": 3,
   "name": "InMyCart",
   "description": "Turns shopping cart items into a visual bag in Chrome's side panel.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "minimum_chrome_version": "116",
   "permissions": ["activeTab", "sidePanel", "storage", "tabs"],
   "host_permissions": [
     "https://musinsa.com/*",
-    "https://*.musinsa.com/*"
+    "https://*.musinsa.com/*",
+    "https://www.oliveyoung.co.kr/*",
+    "https://*.oliveyoung.co.kr/*"
   ],
   "action": {
     "default_title": "Open InMyCart"
@@ -23,7 +25,9 @@
     {
       "matches": [
         "https://musinsa.com/*",
-        "https://*.musinsa.com/*"
+        "https://*.musinsa.com/*",
+        "https://www.oliveyoung.co.kr/*",
+        "https://*.oliveyoung.co.kr/*"
       ],
       "js": [
         "src/content/parsers.js",
