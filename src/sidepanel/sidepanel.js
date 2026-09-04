@@ -8,7 +8,8 @@ const elements = {
   itemCount: document.querySelector("#itemCount"),
   bagCount: document.querySelector("#bagCount"),
   bagTotal: document.querySelector("#bagTotal"),
-  bagItems: document.querySelector("#bagItems"),
+  physicsStage: document.querySelector("#physicsStage"),
+  physicsItems: document.querySelector("#physicsItems"),
   bagEmpty: document.querySelector("#bagEmpty"),
   insights: document.querySelector("#insights"),
   parserLabel: document.querySelector("#parserLabel"),
@@ -17,12 +18,15 @@ const elements = {
   itemTemplate: document.querySelector("#itemTemplate")
 };
 
-const BAG_LAYOUTS = [
-  [{ x: 50, y: 52, size: 150, rot: -3 }],
-  [{ x: 38, y: 56, size: 128, rot: -8 }, { x: 63, y: 48, size: 128, rot: 7 }],
-  [{ x: 31, y: 61, size: 112, rot: -10 }, { x: 54, y: 47, size: 124, rot: 2 }, { x: 72, y: 62, size: 108, rot: 9 }],
-  [{ x: 28, y: 60, size: 104, rot: -10 }, { x: 47, y: 47, size: 116, rot: 4 }, { x: 66, y: 58, size: 104, rot: 12 }, { x: 52, y: 72, size: 98, rot: -4 }]
-];
+const physics = {
+  engine: null,
+  frameRequest: null,
+  lastFrameAt: 0,
+  walls: [],
+  items: new Map(),
+  resizeObserver: null,
+  drag: null
+};
 
 function setStatus(text, tone = "") {
   elements.status.textContent = text;
@@ -70,46 +74,368 @@ function buildInsights(snapshot) {
   return insights;
 }
 
-function getBagLayout(index, count) {
-  if (count <= BAG_LAYOUTS.length) {
-    return BAG_LAYOUTS[count - 1][index];
+function itemKey(item) {
+  return item.id || item.url || item.name || JSON.stringify(item);
+}
+
+function clamp(value, min, max) {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.max(min, Math.min(max, value));
+}
+
+function itemSizeForCount(count) {
+  if (count <= 1) return 118;
+  if (count <= 3) return 100;
+  if (count <= 6) return 86;
+  return 74;
+}
+
+function getMatter() {
+  return window.Matter || null;
+}
+
+function ensurePhysics() {
+  const Matter = getMatter();
+  if (!Matter || !elements.physicsStage || !elements.physicsItems) {
+    return false;
   }
 
+  if (!physics.engine) {
+    physics.engine = Matter.Engine.create({ enableSleeping: true });
+    physics.engine.gravity.y = 0.92;
+    physics.engine.gravity.x = 0;
+    rebuildWalls();
+    startPhysicsLoop();
+
+    physics.resizeObserver = new ResizeObserver(() => {
+      rebuildWalls();
+      keepAllBodiesInStage();
+    });
+    physics.resizeObserver.observe(elements.physicsStage);
+  }
+
+  return true;
+}
+
+function stageSize() {
+  const rect = elements.physicsStage.getBoundingClientRect();
   return {
-    x: 24 + (index % 4) * 17,
-    y: 42 + Math.floor(index / 4) * 18,
-    size: 86,
-    rot: [-9, 4, -3, 8][index % 4]
+    width: Math.max(320, rect.width),
+    height: Math.max(320, rect.height)
   };
 }
 
-function renderBag(items) {
-  elements.bagEmpty.hidden = items.length > 0;
+function rebuildWalls() {
+  const Matter = getMatter();
+  if (!Matter || !physics.engine) {
+    return;
+  }
 
-  const nodes = items.map((item, index) => {
-    const layout = getBagLayout(index, items.length);
-    const tile = document.createElement("div");
-    tile.className = "bag-product";
-    tile.title = item.name || "장바구니 아이템";
-    tile.style.setProperty("--x", `${layout.x}%`);
-    tile.style.setProperty("--y", `${layout.y}%`);
-    tile.style.setProperty("--size", `${layout.size}px`);
-    tile.style.setProperty("--rot", `${layout.rot}deg`);
+  const { Bodies, World } = Matter;
+  const { width, height } = stageSize();
+  const oldWalls = physics.walls;
+  const wallOptions = {
+    isStatic: true,
+    label: "bag-wall",
+    restitution: 0.28,
+    friction: 0.82
+  };
 
-    if (item.imageUrl) {
-      const image = document.createElement("img");
-      image.src = item.imageUrl;
-      image.alt = item.name || "장바구니 아이템";
-      tile.append(image);
-    } else {
-      tile.classList.add("no-image");
-      tile.textContent = item.name || "Item";
+  physics.walls = [
+    Bodies.rectangle(width / 2, height - 37, width - 86, 26, wallOptions),
+    Bodies.rectangle(41, height - 154, 24, height * 0.62, { ...wallOptions, angle: -0.12 }),
+    Bodies.rectangle(width - 41, height - 154, 24, height * 0.62, { ...wallOptions, angle: 0.12 }),
+    Bodies.rectangle(width / 2, -190, width + 140, 24, wallOptions)
+  ];
+
+  oldWalls.forEach((wall) => World.remove(physics.engine.world, wall));
+  World.add(physics.engine.world, physics.walls);
+}
+
+function startPhysicsLoop() {
+  if (physics.frameRequest) {
+    return;
+  }
+
+  const step = (time) => {
+    const Matter = getMatter();
+    if (!Matter || !physics.engine) {
+      physics.frameRequest = null;
+      return;
     }
 
-    return tile;
+    const delta = physics.lastFrameAt ? clamp(time - physics.lastFrameAt, 12, 34) : 16.67;
+    physics.lastFrameAt = time;
+    Matter.Engine.update(physics.engine, delta);
+    releaseStuckDrag();
+    keepAllBodiesInStage();
+    paintPhysicsItems();
+    physics.frameRequest = requestAnimationFrame(step);
+  };
+
+  physics.frameRequest = requestAnimationFrame(step);
+}
+
+function makePhysicsElement(item, size) {
+  const tile = document.createElement("div");
+  tile.className = "physics-product";
+  tile.title = item.name || "장바구니 아이템";
+  tile.style.setProperty("--item-size", `${size}px`);
+
+  if (item.imageUrl) {
+    const image = document.createElement("img");
+    image.src = item.imageUrl;
+    image.alt = item.name || "장바구니 아이템";
+    tile.append(image);
+  } else {
+    tile.classList.add("no-image");
+    tile.textContent = item.name || "Item";
+  }
+
+  return tile;
+}
+
+function spawnX(index, count, width, size) {
+  const spread = Math.max(size, width - size * 1.6);
+  const base = size * 0.8 + ((index * 83) % Math.max(1, spread));
+  const wave = Math.sin((index + count) * 1.7) * 28;
+  return clamp(base + wave, size / 2 + 28, width - size / 2 - 28);
+}
+
+function addPhysicsItem(item, index, count) {
+  const Matter = getMatter();
+  if (!Matter || !physics.engine) {
+    return;
+  }
+
+  const { Bodies, Body, World } = Matter;
+  const { width } = stageSize();
+  const size = itemSizeForCount(count);
+  const body = Bodies.rectangle(
+    spawnX(index, count, width, size),
+    -size - index * 58,
+    size,
+    size,
+    {
+      label: "cart-item",
+      restitution: 0.31,
+      friction: 0.64,
+      frictionStatic: 0.86,
+      frictionAir: 0.026,
+      density: 0.0012,
+      chamfer: { radius: 8 }
+    }
+  );
+
+  Body.setVelocity(body, {
+    x: ((index % 2 === 0 ? 1 : -1) * (0.35 + (index % 3) * 0.16)),
+    y: 0.55
+  });
+  Body.setAngularVelocity(body, (index % 2 === 0 ? 1 : -1) * (0.045 + (index % 4) * 0.012));
+
+  const element = makePhysicsElement(item, size);
+  elements.physicsItems.append(element);
+  World.add(physics.engine.world, body);
+
+  physics.items.set(itemKey(item), { body, element, item, size, lastDragPoint: null, dragHeartbeatAt: 0 });
+  attachDragHandlers(itemKey(item), element);
+}
+
+function attachDragHandlers(key, element) {
+  element.addEventListener("pointerdown", (event) => {
+    const entry = physics.items.get(key);
+    const Matter = getMatter();
+    if (!entry || !Matter) {
+      return;
+    }
+
+    event.preventDefault();
+    element.setPointerCapture(event.pointerId);
+    const point = pointerPoint(event);
+    physics.drag = { key, pointerId: event.pointerId, previous: point, startedAt: performance.now() };
+    entry.dragHeartbeatAt = Date.now();
+    Matter.Body.setStatic(entry.body, true);
+    Matter.Body.setPosition(entry.body, point);
+    Matter.Body.setVelocity(entry.body, { x: 0, y: 0 });
+    Matter.Body.setAngularVelocity(entry.body, 0);
+    element.classList.add("is-dragging");
   });
 
-  elements.bagItems.replaceChildren(...nodes);
+  element.addEventListener("pointermove", (event) => {
+    const drag = physics.drag;
+    const entry = drag ? physics.items.get(drag.key) : null;
+    const Matter = getMatter();
+    if (!drag || !entry || !Matter || event.pointerId !== drag.pointerId) {
+      return;
+    }
+
+    const point = pointerPoint(event);
+    entry.lastDragPoint = {
+      x: point.x - drag.previous.x,
+      y: point.y - drag.previous.y
+    };
+    drag.previous = point;
+    entry.dragHeartbeatAt = Date.now();
+    Matter.Body.setPosition(entry.body, clampPointToStage(point, entry.size));
+  });
+
+  const endDrag = (event) => {
+    const drag = physics.drag;
+    const entry = drag ? physics.items.get(drag.key) : null;
+    const Matter = getMatter();
+    if (!drag || !entry || !Matter || event.pointerId !== drag.pointerId) {
+      return;
+    }
+
+    const velocity = entry.lastDragPoint || { x: 0, y: 0 };
+    Matter.Body.setStatic(entry.body, false);
+    Matter.Body.setVelocity(entry.body, {
+      x: clamp(velocity.x * 0.42, -12, 12),
+      y: clamp(velocity.y * 0.42, -12, 12)
+    });
+    Matter.Body.setAngularVelocity(entry.body, clamp(velocity.x * 0.006, -0.18, 0.18));
+    entry.lastDragPoint = null;
+    element.classList.remove("is-dragging");
+    physics.drag = null;
+  };
+
+  element.addEventListener("pointerup", endDrag);
+  element.addEventListener("pointercancel", endDrag);
+}
+
+function pointerPoint(event) {
+  const rect = elements.physicsStage.getBoundingClientRect();
+  return {
+    x: event.clientX - rect.left,
+    y: event.clientY - rect.top
+  };
+}
+
+function clampPointToStage(point, size) {
+  const { width, height } = stageSize();
+  const inset = size / 2;
+  return {
+    x: clamp(point.x, inset + 18, width - inset - 18),
+    y: clamp(point.y, inset + 18, height - inset - 18)
+  };
+}
+
+function releaseStuckDrag() {
+  const Matter = getMatter();
+  if (!Matter) {
+    return;
+  }
+
+  physics.items.forEach((entry) => {
+    if (!entry.body.isStatic || physics.drag?.key === itemKey(entry.item) || Date.now() - entry.dragHeartbeatAt < 2000) {
+      return;
+    }
+
+    Matter.Body.setStatic(entry.body, false);
+    Matter.Body.setVelocity(entry.body, { x: 0, y: 0 });
+    Matter.Body.setAngularVelocity(entry.body, 0);
+  });
+}
+
+function keepAllBodiesInStage() {
+  const Matter = getMatter();
+  if (!Matter) {
+    return;
+  }
+
+  physics.items.forEach((entry) => {
+    if (entry.body.isStatic) {
+      return;
+    }
+
+    const position = entry.body.position;
+    const angle = entry.body.angle;
+    if (!Number.isFinite(position.x) || !Number.isFinite(position.y) || !Number.isFinite(angle)) {
+      const { width } = stageSize();
+      Matter.Body.setPosition(entry.body, { x: width / 2, y: -entry.size });
+      Matter.Body.setAngle(entry.body, 0);
+      Matter.Body.setVelocity(entry.body, { x: 0, y: 0.45 });
+      Matter.Body.setAngularVelocity(entry.body, 0);
+      return;
+    }
+
+    const { width, height } = stageSize();
+    const inset = entry.size / 2;
+    const escapedSideways = position.x < -entry.size || position.x > width + entry.size;
+    const escapedDown = position.y > height + entry.size;
+    const escapedUp = position.y < -height;
+
+    if (escapedSideways || escapedDown || escapedUp) {
+      Matter.Body.setPosition(entry.body, {
+        x: clamp(position.x, inset + 28, width - inset - 28),
+        y: escapedDown || escapedUp ? -entry.size : position.y
+      });
+      Matter.Body.setVelocity(entry.body, { x: 0, y: 0.45 });
+    }
+  });
+}
+
+function paintPhysicsItems() {
+  physics.items.forEach((entry) => {
+    const { body, element, size } = entry;
+    element.style.transform = `translate(${body.position.x - size / 2}px, ${body.position.y - size / 2}px) rotate(${body.angle}rad)`;
+  });
+}
+
+function clearPhysicsItems() {
+  const Matter = getMatter();
+  if (Matter && physics.engine) {
+    physics.items.forEach((entry) => Matter.World.remove(physics.engine.world, entry.body));
+  }
+  physics.items.clear();
+  elements.physicsItems.replaceChildren();
+}
+
+function renderStaticBagFallback(items) {
+  elements.physicsItems.replaceChildren(...items.map((item, index) => {
+    const size = itemSizeForCount(items.length);
+    const tile = makePhysicsElement(item, size);
+    tile.style.transform = `translate(${34 + (index % 3) * 76}px, ${142 + Math.floor(index / 3) * 58}px) rotate(${[-8, 5, -3][index % 3]}deg)`;
+    return tile;
+  }));
+}
+
+function syncPhysicsBag(items) {
+  elements.bagEmpty.hidden = items.length > 0;
+
+  if (!items.length) {
+    clearPhysicsItems();
+    return;
+  }
+
+  if (!ensurePhysics()) {
+    renderStaticBagFallback(items);
+    return;
+  }
+
+  const nextKeys = new Set(items.map(itemKey));
+  physics.items.forEach((entry, key) => {
+    if (!nextKeys.has(key)) {
+      const Matter = getMatter();
+      if (Matter && physics.engine) {
+        Matter.World.remove(physics.engine.world, entry.body);
+      }
+      entry.element.remove();
+      physics.items.delete(key);
+    }
+  });
+
+  items.forEach((item, index) => {
+    const key = itemKey(item);
+    const entry = physics.items.get(key);
+    if (entry) {
+      entry.item = item;
+      return;
+    }
+    addPhysicsItem(item, index, items.length);
+  });
 }
 
 function renderSnapshot(snapshot) {
@@ -121,7 +447,7 @@ function renderSnapshot(snapshot) {
   elements.bagTotal.textContent = total > 0 ? formatWon(total) : "가격 대기중";
   elements.parserLabel.textContent = snapshot?.parserVersion || "";
 
-  renderBag(items);
+  syncPhysicsBag(items);
 
   elements.insights.replaceChildren(...buildInsights(snapshot).map((text) => {
     const li = document.createElement("li");
