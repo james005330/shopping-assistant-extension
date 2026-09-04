@@ -1,4 +1,4 @@
-(function bootCartLensContentScript() {
+(function bootCartPeekContentScript() {
   let lastSignature = "";
   let lastSnapshot = null;
   let scheduled = null;
