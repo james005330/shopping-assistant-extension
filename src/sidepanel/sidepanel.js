@@ -584,9 +584,9 @@ function isSupportedSnapshot(snapshot) {
 
 function snapshotSourceLabel(snapshot) {
   if (snapshot?.sources?.length) {
-    return snapshot.sources.map((source) => source.label).filter(Boolean).join(" + ") || "InMyCart";
+    return snapshot.sources.map((source) => source.label).filter(Boolean).join(" + ") || "CartPeek";
   }
-  return snapshot?.label || "InMyCart";
+  return snapshot?.label || "CartPeek";
 }
 
 async function persistPageSnapshot(tabId, snapshot) {
