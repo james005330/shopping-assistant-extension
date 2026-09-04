@@ -1,3 +1,5 @@
+const SUPPORTED_SNAPSHOT_SITES = new Set(["musinsa", "oliveyoung", "combined"]);
+
 const state = {
   activeTabId: null,
   snapshot: null
@@ -52,7 +54,8 @@ function cartTotal(items) {
 }
 
 function itemKey(item) {
-  return item.id || item.url || item.name || JSON.stringify(item);
+  const source = item.sourceSite || item.site || "unknown";
+  return `${source}:${item.id || item.url || item.name || JSON.stringify(item)}`;
 }
 
 function productUrl(item) {
@@ -61,7 +64,8 @@ function productUrl(item) {
   }
 
   try {
-    const url = new URL(item.url, "https://www.musinsa.com");
+    const fallbackHost = item.sourceSite === "oliveyoung" ? "https://www.oliveyoung.co.kr" : "https://www.musinsa.com";
+    const url = new URL(item.url, fallbackHost);
     return ["http:", "https:"].includes(url.protocol) ? url.href : null;
   } catch {
     return null;
@@ -540,7 +544,7 @@ function renderSnapshot(snapshot) {
     }
 
     image.alt = item.name || "상품 이미지";
-    brand.textContent = item.brand || "브랜드 정보 없음";
+    brand.textContent = item.brand || item.sourceLabel || "브랜드 정보 없음";
     name.textContent = item.name || "상품명 인식 필요";
     option.textContent = item.option || "";
     price.textContent = item.price || "가격 정보 없음";
@@ -574,39 +578,68 @@ async function readLastBagSnapshot() {
   return response?.snapshot || null;
 }
 
+function isSupportedSnapshot(snapshot) {
+  return SUPPORTED_SNAPSHOT_SITES.has(snapshot?.site);
+}
+
+function snapshotSourceLabel(snapshot) {
+  if (snapshot?.sources?.length) {
+    return snapshot.sources.map((source) => source.label).filter(Boolean).join(" + ") || "InMyCart";
+  }
+  return snapshot?.label || "InMyCart";
+}
+
+async function persistPageSnapshot(tabId, snapshot) {
+  if (!Number.isInteger(tabId) || !isSupportedSnapshot(snapshot) || snapshot.site === "combined") {
+    return null;
+  }
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: "CART_SNAPSHOT",
+      payload: { ...snapshot, tabId }
+    });
+    return response?.snapshot || null;
+  } catch {
+    return null;
+  }
+}
+
+function updateStatusForSnapshot(snapshot) {
+  if (!snapshot) {
+    setStatus("무신사나 올리브영 장바구니를 한 번 읽으면 여기에 계속 보관됩니다.", "warn");
+    return;
+  }
+
+  if (snapshot.items.length) {
+    setStatus(`${snapshotSourceLabel(snapshot)}에서 담은 ${snapshot.items.length}개의 아이템을 보관 중입니다.`, "ok");
+  } else {
+    setStatus("마지막으로 읽은 장바구니에는 아이템이 없습니다.", "warn");
+  }
+}
+
 async function refresh() {
   const tab = await getActiveTab();
   state.activeTabId = tab?.id ?? null;
 
   const pageSnapshot = tab?.id ? await requestPageSnapshot(tab.id) : null;
-  const storedSnapshot = pageSnapshot?.site === "musinsa" ? pageSnapshot : await readLastBagSnapshot();
-  state.snapshot = storedSnapshot;
-
+  let storedSnapshot = await persistPageSnapshot(tab?.id, pageSnapshot);
   if (!storedSnapshot) {
-    setStatus("무신사 장바구니를 한 번 읽으면 여기에 계속 보관됩니다.", "warn");
-    renderSnapshot(null);
-    return;
+    storedSnapshot = await readLastBagSnapshot();
   }
 
-  if (storedSnapshot.items.length) {
-    setStatus(`${storedSnapshot.label}에서 담은 ${storedSnapshot.items.length}개의 아이템을 보관 중입니다.`, "ok");
-  } else {
-    setStatus("마지막으로 읽은 장바구니에는 아이템이 없습니다.", "warn");
-  }
-
+  state.snapshot = storedSnapshot;
+  updateStatusForSnapshot(storedSnapshot);
   renderSnapshot(storedSnapshot);
 }
 
 chrome.runtime.onMessage.addListener((message) => {
-  if (message?.type !== "CART_SNAPSHOT_UPDATED") {
-    return;
-  }
-
-  if (message.payload?.site !== "musinsa") {
+  if (message?.type !== "CART_SNAPSHOT_UPDATED" || !isSupportedSnapshot(message.payload)) {
     return;
   }
 
   state.snapshot = message.payload;
+  updateStatusForSnapshot(message.payload);
   renderSnapshot(message.payload);
 });
 
