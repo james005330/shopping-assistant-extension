@@ -143,11 +143,13 @@ function rebuildWalls() {
     friction: 0.82
   };
 
+  const thickness = 64;
+  const inset = 8;
   physics.walls = [
-    Bodies.rectangle(width / 2, height - 37, width - 86, 26, wallOptions),
-    Bodies.rectangle(41, height - 154, 24, height * 0.62, { ...wallOptions, angle: -0.12 }),
-    Bodies.rectangle(width - 41, height - 154, 24, height * 0.62, { ...wallOptions, angle: 0.12 }),
-    Bodies.rectangle(width / 2, -190, width + 140, 24, wallOptions)
+    Bodies.rectangle(width / 2, height + thickness / 2 - inset, width + thickness * 2, thickness, wallOptions),
+    Bodies.rectangle(-thickness / 2 + inset, height / 2, thickness, height + thickness * 2, wallOptions),
+    Bodies.rectangle(width + thickness / 2 - inset, height / 2, thickness, height + thickness * 2, wallOptions),
+    Bodies.rectangle(width / 2, -height - thickness / 2, width + thickness * 2, thickness, wallOptions)
   ];
 
   oldWalls.forEach((wall) => World.remove(physics.engine.world, wall));
@@ -317,8 +319,8 @@ function clampPointToStage(point, size) {
   const { width, height } = stageSize();
   const inset = size / 2;
   return {
-    x: clamp(point.x, inset + 18, width - inset - 18),
-    y: clamp(point.y, inset + 18, height - inset - 18)
+    x: clamp(point.x, inset + 10, width - inset - 10),
+    y: clamp(point.y, inset + 10, height - inset - 10)
   };
 }
 
@@ -369,7 +371,7 @@ function keepAllBodiesInStage() {
 
     if (escapedSideways || escapedDown || escapedUp) {
       Matter.Body.setPosition(entry.body, {
-        x: clamp(position.x, inset + 28, width - inset - 28),
+        x: clamp(position.x, inset + 10, width - inset - 10),
         y: escapedDown || escapedUp ? -entry.size : position.y
       });
       Matter.Body.setVelocity(entry.body, { x: 0, y: 0.45 });
