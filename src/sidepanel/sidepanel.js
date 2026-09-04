@@ -74,16 +74,16 @@ function openProductPage(item) {
     return;
   }
 
+  const createOptions = { url, active: true };
   if (Number.isInteger(state.activeTabId)) {
-    chrome.tabs.update(state.activeTabId, { url }, () => {
-      if (chrome.runtime.lastError) {
-        chrome.tabs.create({ url });
-      }
-    });
-    return;
+    createOptions.openerTabId = state.activeTabId;
   }
 
-  chrome.tabs.create({ url });
+  chrome.tabs.create(createOptions, () => {
+    if (chrome.runtime.lastError && createOptions.openerTabId) {
+      chrome.tabs.create({ url, active: true });
+    }
+  });
 }
 
 function wakeBody(body) {
