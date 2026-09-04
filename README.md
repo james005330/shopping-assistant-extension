@@ -1,6 +1,6 @@
-# InMyCart
+# CartPeek
 
-InMyCart는 쇼핑몰 장바구니에 담긴 아이템을 Chrome 오른쪽 Side Panel의 가방 UI 안에 시각적으로 담아 보여주는 실험용 확장프로그램입니다.
+CartPeek는 쇼핑몰 장바구니에 담긴 아이템을 Chrome 오른쪽 Side Panel의 가방 UI 안에 시각적으로 담아 보여주는 실험용 확장프로그램입니다.
 
 현재 MVP는 MUSINSA와 OLIVEYOUNG 장바구니 페이지를 지원합니다. 장바구니 데이터를 읽는 파서는 사이트별로 분리되어 있어 Coupang 같은 쇼핑몰도 나중에 추가할 수 있습니다.
 
@@ -53,7 +53,7 @@ npm install
 4. 이 프로젝트 폴더를 선택합니다.
 5. MUSINSA나 OLIVEYOUNG 장바구니 페이지를 연 뒤 확장프로그램 아이콘을 누르면 오른쪽 패널이 열립니다.
 
-코드를 고친 뒤에는 `chrome://extensions`에서 InMyCart 카드의 새로고침 버튼을 누르고, 장바구니 탭도 새로고침하면 됩니다.
+코드를 고친 뒤에는 `chrome://extensions`에서 CartPeek 카드의 새로고침 버튼을 누르고, 장바구니 탭도 새로고침하면 됩니다.
 
 ## 개발 메모
 
