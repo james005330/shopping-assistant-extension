@@ -1,6 +1,6 @@
 {
   "name": "shopping-assistant-extension",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "InMyCart Chrome extension MVP with a Matter.js bag simulation for shopping cart items.",
   "dependencies": {
