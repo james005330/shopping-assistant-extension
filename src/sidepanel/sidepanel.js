@@ -6,13 +6,23 @@ const state = {
 const elements = {
   status: document.querySelector("#status"),
   itemCount: document.querySelector("#itemCount"),
-  knownPriceCount: document.querySelector("#knownPriceCount"),
+  bagCount: document.querySelector("#bagCount"),
+  bagTotal: document.querySelector("#bagTotal"),
+  bagItems: document.querySelector("#bagItems"),
+  bagEmpty: document.querySelector("#bagEmpty"),
   insights: document.querySelector("#insights"),
   parserLabel: document.querySelector("#parserLabel"),
   itemsList: document.querySelector("#itemsList"),
   refreshButton: document.querySelector("#refreshButton"),
   itemTemplate: document.querySelector("#itemTemplate")
 };
+
+const BAG_LAYOUTS = [
+  [{ x: 50, y: 52, size: 150, rot: -3 }],
+  [{ x: 38, y: 56, size: 128, rot: -8 }, { x: 63, y: 48, size: 128, rot: 7 }],
+  [{ x: 31, y: 61, size: 112, rot: -10 }, { x: 54, y: 47, size: 124, rot: 2 }, { x: 72, y: 62, size: 108, rot: 9 }],
+  [{ x: 28, y: 60, size: 104, rot: -10 }, { x: 47, y: 47, size: 116, rot: 4 }, { x: 66, y: 58, size: 104, rot: 12 }, { x: 52, y: 72, size: 98, rot: -4 }]
+];
 
 function setStatus(text, tone = "") {
   elements.status.textContent = text;
@@ -32,43 +42,86 @@ function formatWon(value) {
   return `${value.toLocaleString("ko-KR")}원`;
 }
 
+function cartTotal(items) {
+  return items.reduce((sum, item) => {
+    const value = parseWon(item.price);
+    return Number.isFinite(value) ? sum + value * (item.quantity || 1) : sum;
+  }, 0);
+}
+
 function buildInsights(snapshot) {
   const items = snapshot?.items || [];
   if (!items.length) {
-    return ["상품을 읽어오면 이곳에 요약이 표시됩니다."];
+    return ["장바구니 아이템을 찾으면 가방 안에 사진이 담깁니다."];
   }
 
-  const prices = items
-    .map((item) => ({ item, value: parseWon(item.price) }))
-    .filter((entry) => Number.isFinite(entry.value));
+  const total = cartTotal(items);
+  const insights = [`지금 가방 안에는 ${items.length}개의 아이템이 있습니다.`];
 
-  const insights = [`총 ${items.length}개의 상품을 찾았습니다.`];
-
-  if (prices.length) {
-    const total = prices.reduce((sum, entry) => sum + entry.value * (entry.item.quantity || 1), 0);
-    const highest = prices.reduce((max, entry) => entry.value > max.value ? entry : max, prices[0]);
+  if (total > 0) {
     insights.push(`인식된 가격 기준 합계는 ${formatWon(total)}입니다.`);
-    insights.push(`가장 비싼 상품은 ${highest.item.name || "이름 없는 상품"}입니다.`);
-  } else {
-    insights.push("가격 텍스트는 아직 안정적으로 찾지 못했습니다.");
   }
 
-  const brands = items.map((item) => item.brand).filter(Boolean);
-  if (brands.length) {
-    const uniqueBrands = [...new Set(brands)];
-    insights.push(`${uniqueBrands.length}개의 브랜드가 섞여 있습니다.`);
+  const categories = items.map((item) => item.category).filter(Boolean);
+  if (categories.length) {
+    insights.push(`${new Set(categories).size}개의 카테고리가 담겨 있습니다.`);
   }
 
   return insights;
 }
 
+function getBagLayout(index, count) {
+  if (count <= BAG_LAYOUTS.length) {
+    return BAG_LAYOUTS[count - 1][index];
+  }
+
+  return {
+    x: 24 + (index % 4) * 17,
+    y: 42 + Math.floor(index / 4) * 18,
+    size: 86,
+    rot: [-9, 4, -3, 8][index % 4]
+  };
+}
+
+function renderBag(items) {
+  elements.bagEmpty.hidden = items.length > 0;
+
+  const nodes = items.map((item, index) => {
+    const layout = getBagLayout(index, items.length);
+    const tile = document.createElement("div");
+    tile.className = "bag-product";
+    tile.title = item.name || "장바구니 아이템";
+    tile.style.setProperty("--x", `${layout.x}%`);
+    tile.style.setProperty("--y", `${layout.y}%`);
+    tile.style.setProperty("--size", `${layout.size}px`);
+    tile.style.setProperty("--rot", `${layout.rot}deg`);
+
+    if (item.imageUrl) {
+      const image = document.createElement("img");
+      image.src = item.imageUrl;
+      image.alt = item.name || "장바구니 아이템";
+      tile.append(image);
+    } else {
+      tile.classList.add("no-image");
+      tile.textContent = item.name || "Item";
+    }
+
+    return tile;
+  });
+
+  elements.bagItems.replaceChildren(...nodes);
+}
+
 function renderSnapshot(snapshot) {
   const items = snapshot?.items || [];
-  const knownPrices = items.filter((item) => parseWon(item.price) !== null || item.price).length;
+  const total = cartTotal(items);
 
   elements.itemCount.textContent = String(items.length);
-  elements.knownPriceCount.textContent = String(knownPrices);
+  elements.bagCount.textContent = `${items.length} item${items.length === 1 ? "" : "s"}`;
+  elements.bagTotal.textContent = total > 0 ? formatWon(total) : "가격 대기중";
   elements.parserLabel.textContent = snapshot?.parserVersion || "";
+
+  renderBag(items);
 
   elements.insights.replaceChildren(...buildInsights(snapshot).map((text) => {
     const li = document.createElement("li");
@@ -79,7 +132,7 @@ function renderSnapshot(snapshot) {
   if (!items.length) {
     const empty = document.createElement("div");
     empty.className = "empty";
-    empty.textContent = "아직 표시할 상품이 없습니다.";
+    empty.textContent = "아직 담긴 아이템이 없습니다.";
     elements.itemsList.replaceChildren(empty);
     return;
   }
@@ -159,9 +212,9 @@ async function refresh() {
   if (storedSnapshot.site === "unsupported") {
     setStatus("현재 페이지는 아직 지원하지 않습니다.", "warn");
   } else if (storedSnapshot.items.length) {
-    setStatus(`${storedSnapshot.label} 장바구니를 읽었습니다.`, "ok");
+    setStatus(`${storedSnapshot.label}에서 ${storedSnapshot.items.length}개의 아이템을 담았습니다.`, "ok");
   } else {
-    setStatus("장바구니 페이지는 감지했지만 상품을 찾지 못했습니다.", "warn");
+    setStatus("장바구니 페이지는 감지했지만 아이템을 찾지 못했습니다.", "warn");
   }
 
   renderSnapshot(storedSnapshot);
