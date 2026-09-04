@@ -169,6 +169,7 @@
       brand,
       option,
       price,
+      category: dataText(primary, "item-category"),
       quantity: parseNumberFromText(quantityText, 1),
       imageUrl: firstImage(imageRow),
       url: firstLink(linkRow)
