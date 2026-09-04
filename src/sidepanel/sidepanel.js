@@ -569,8 +569,8 @@ async function requestPageSnapshot(tabId) {
   return null;
 }
 
-async function readStoredSnapshot(tabId) {
-  const response = await chrome.runtime.sendMessage({ type: "GET_LAST_SNAPSHOT", tabId });
+async function readLastBagSnapshot() {
+  const response = await chrome.runtime.sendMessage({ type: "GET_LAST_BAG_SNAPSHOT" });
   return response?.snapshot || null;
 }
 
@@ -578,28 +578,20 @@ async function refresh() {
   const tab = await getActiveTab();
   state.activeTabId = tab?.id ?? null;
 
-  if (!tab?.id) {
-    setStatus("활성 탭을 찾지 못했습니다.", "warn");
-    renderSnapshot(null);
-    return;
-  }
-
-  const pageSnapshot = await requestPageSnapshot(tab.id);
-  const storedSnapshot = pageSnapshot || await readStoredSnapshot(tab.id);
+  const pageSnapshot = tab?.id ? await requestPageSnapshot(tab.id) : null;
+  const storedSnapshot = pageSnapshot?.site === "musinsa" ? pageSnapshot : await readLastBagSnapshot();
   state.snapshot = storedSnapshot;
 
   if (!storedSnapshot) {
-    setStatus("무신사 장바구니 페이지에서 열어주세요.", "warn");
+    setStatus("무신사 장바구니를 한 번 읽으면 여기에 계속 보관됩니다.", "warn");
     renderSnapshot(null);
     return;
   }
 
-  if (storedSnapshot.site === "unsupported") {
-    setStatus("현재 페이지는 아직 지원하지 않습니다.", "warn");
-  } else if (storedSnapshot.items.length) {
-    setStatus(`${storedSnapshot.label}에서 ${storedSnapshot.items.length}개의 아이템을 담았습니다.`, "ok");
+  if (storedSnapshot.items.length) {
+    setStatus(`${storedSnapshot.label}에서 담은 ${storedSnapshot.items.length}개의 아이템을 보관 중입니다.`, "ok");
   } else {
-    setStatus("장바구니 페이지는 감지했지만 아이템을 찾지 못했습니다.", "warn");
+    setStatus("마지막으로 읽은 장바구니에는 아이템이 없습니다.", "warn");
   }
 
   renderSnapshot(storedSnapshot);
@@ -610,7 +602,7 @@ chrome.runtime.onMessage.addListener((message) => {
     return;
   }
 
-  if (message.payload?.tabId !== state.activeTabId) {
+  if (message.payload?.site !== "musinsa") {
     return;
   }
 
