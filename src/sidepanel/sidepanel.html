@@ -23,13 +23,15 @@
       </section>
 
       <section class="bag-section" aria-label="장바구니 가방">
-        <div class="bag-stage">
-          <div class="bag-handle" aria-hidden="true"></div>
-          <div class="bag-body">
-            <div class="bag-lip" aria-hidden="true"></div>
-            <div id="bagItems" class="bag-items"></div>
-            <div id="bagEmpty" class="bag-empty">Your cart goes here</div>
+        <div id="physicsStage" class="physics-stage">
+          <div class="bag-shell" aria-hidden="true">
+            <div class="bag-handle"></div>
+            <div class="bag-back"></div>
+            <div class="bag-front"></div>
+            <div class="bag-lip"></div>
           </div>
+          <div id="physicsItems" class="physics-items"></div>
+          <div id="bagEmpty" class="bag-empty">Your cart goes here</div>
         </div>
         <div class="bag-footer">
           <div>
@@ -69,6 +71,7 @@
       </article>
     </template>
 
+    <script src="../../node_modules/matter-js/build/matter.min.js"></script>
     <script src="sidepanel.js"></script>
   </body>
 </html>
