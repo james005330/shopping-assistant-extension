@@ -1,8 +1,8 @@
 {
-  "name": "shopping-assistant-extension",
+  "name": "cartpeek-extension",
   "version": "0.4.0",
   "private": true,
-  "description": "InMyCart Chrome extension MVP with a Matter.js bag simulation for shopping cart items.",
+  "description": "CartPeek Chrome extension MVP with a Matter.js bag simulation for shopping cart items.",
   "dependencies": {
     "matter-js": "^0.20.0"
   }
