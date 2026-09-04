@@ -1,5 +1,8 @@
 const SNAPSHOT_PREFIX = "cartSnapshot:";
-const LAST_BAG_KEY = "lastBagSnapshot";
+const BAG_SNAPSHOTS_KEY = "bagSnapshotsBySite";
+const LEGACY_LAST_BAG_KEY = "lastBagSnapshot";
+const SUPPORTED_SITES = new Set(["musinsa", "oliveyoung"]);
+const SITE_ORDER = ["musinsa", "oliveyoung"];
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
@@ -14,7 +17,62 @@ function snapshotKey(tabId) {
 }
 
 function isSupportedBagSnapshot(snapshot) {
-  return snapshot?.site === "musinsa";
+  return SUPPORTED_SITES.has(snapshot?.site);
+}
+
+function normalizeItem(snapshot, item, index) {
+  const sourceSite = item.sourceSite || snapshot.site;
+  const rawId = item.id || item.url || item.name || String(index);
+  return {
+    ...item,
+    sourceSite,
+    sourceLabel: item.sourceLabel || snapshot.label,
+    id: `${sourceSite}:${rawId}`
+  };
+}
+
+function sortSnapshots(snapshots) {
+  return snapshots.sort((a, b) => {
+    const siteA = SITE_ORDER.indexOf(a.site);
+    const siteB = SITE_ORDER.indexOf(b.site);
+    return (siteA === -1 ? 999 : siteA) - (siteB === -1 ? 999 : siteB);
+  });
+}
+
+function combinedBagSnapshot(snapshotsBySite) {
+  const snapshots = sortSnapshots(Object.values(snapshotsBySite || {}).filter(isSupportedBagSnapshot));
+  if (!snapshots.length) {
+    return null;
+  }
+
+  const items = snapshots.flatMap((snapshot) =>
+    (snapshot.items || []).map((item, index) => normalizeItem(snapshot, item, index))
+  );
+  const labels = snapshots.map((snapshot) => snapshot.label).filter(Boolean);
+  const latestReceivedAt = snapshots
+    .map((snapshot) => snapshot.receivedAt || snapshot.parsedAt)
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+
+  return {
+    site: "combined",
+    label: labels.length ? labels.join(" + ") : "InMyCart",
+    url: "",
+    parsedAt: latestReceivedAt || new Date().toISOString(),
+    receivedAt: latestReceivedAt || new Date().toISOString(),
+    items,
+    parserVersion: "combined-bag.v1",
+    sources: snapshots.map((snapshot) => ({
+      site: snapshot.site,
+      label: snapshot.label,
+      url: snapshot.url,
+      parsedAt: snapshot.parsedAt,
+      receivedAt: snapshot.receivedAt,
+      count: snapshot.items?.length || 0,
+      parserVersion: snapshot.parserVersion
+    }))
+  };
 }
 
 function readTabSnapshot(tabId, sendResponse) {
@@ -28,28 +86,59 @@ function readTabSnapshot(tabId, sendResponse) {
   });
 }
 
-function readLastBagSnapshot(sendResponse) {
-  chrome.storage.local.get(LAST_BAG_KEY, (result) => {
-    sendResponse({ ok: true, snapshot: result[LAST_BAG_KEY] || null });
+function readBagSnapshots(callback) {
+  chrome.storage.local.get([BAG_SNAPSHOTS_KEY, LEGACY_LAST_BAG_KEY], (result) => {
+    const current = result[BAG_SNAPSHOTS_KEY];
+    const snapshotsBySite = current && typeof current === "object" && !Array.isArray(current)
+      ? { ...current }
+      : {};
+    const legacy = result[LEGACY_LAST_BAG_KEY];
+
+    if (isSupportedBagSnapshot(legacy) && !snapshotsBySite[legacy.site]) {
+      snapshotsBySite[legacy.site] = legacy;
+      chrome.storage.local.set({ [BAG_SNAPSHOTS_KEY]: snapshotsBySite });
+    }
+
+    callback(snapshotsBySite);
   });
 }
 
-function publishSnapshot(snapshot, sendResponse) {
-  const tabStorage = Number.isInteger(snapshot.tabId)
-    ? chrome.storage.session.set({ [snapshotKey(snapshot.tabId)]: snapshot })
-    : Promise.resolve();
+function readLastBagSnapshot(sendResponse) {
+  readBagSnapshots((snapshotsBySite) => {
+    sendResponse({ ok: true, snapshot: combinedBagSnapshot(snapshotsBySite) });
+  });
+}
 
-  if (!isSupportedBagSnapshot(snapshot)) {
-    Promise.resolve(tabStorage).then(() => {
-      sendResponse?.({ ok: true, persisted: false });
-    });
+function writeTabSnapshot(snapshot, done) {
+  if (!Number.isInteger(snapshot.tabId)) {
+    done();
     return;
   }
 
-  Promise.resolve(tabStorage).then(() => {
-    chrome.storage.local.set({ [LAST_BAG_KEY]: snapshot }, () => {
-      chrome.runtime.sendMessage({ type: "CART_SNAPSHOT_UPDATED", payload: snapshot }).catch(() => {});
-      sendResponse?.({ ok: true, persisted: true });
+  chrome.storage.session.set({ [snapshotKey(snapshot.tabId)]: snapshot }, done);
+}
+
+function publishSnapshot(snapshot, sendResponse) {
+  writeTabSnapshot(snapshot, () => {
+    if (!isSupportedBagSnapshot(snapshot)) {
+      sendResponse?.({ ok: true, persisted: false, snapshot: null });
+      return;
+    }
+
+    readBagSnapshots((snapshotsBySite) => {
+      const nextSnapshots = {
+        ...snapshotsBySite,
+        [snapshot.site]: snapshot
+      };
+      const combined = combinedBagSnapshot(nextSnapshots);
+
+      chrome.storage.local.set({
+        [BAG_SNAPSHOTS_KEY]: nextSnapshots,
+        [LEGACY_LAST_BAG_KEY]: snapshot
+      }, () => {
+        chrome.runtime.sendMessage({ type: "CART_SNAPSHOT_UPDATED", payload: combined }).catch(() => {});
+        sendResponse?.({ ok: true, persisted: true, snapshot: combined });
+      });
     });
   });
 }
@@ -60,7 +149,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === "CART_SNAPSHOT") {
-    const tabId = sender.tab?.id;
+    const senderTabId = sender.tab?.id;
+    const payloadTabId = message.payload?.tabId;
+    const tabId = Number.isInteger(senderTabId) ? senderTabId : payloadTabId;
     const snapshot = {
       ...message.payload,
       tabId: Number.isInteger(tabId) ? tabId : null,
