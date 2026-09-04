@@ -1,17 +1,15 @@
 :root {
   color-scheme: light;
-  --bg: #f7f5ef;
+  --bg: #f6f3ec;
   --panel: #ffffff;
   --ink: #151515;
   --text: #191919;
   --muted: #77736b;
-  --line: #e2ded5;
+  --line: #e1ddd4;
   --accent: #0f7b5c;
   --accent-soft: #e3f4ec;
-  --gold: #c98b2b;
-  --rose: #f3d7cf;
   --warn: #9a4b00;
-  --shadow: 0 12px 28px rgba(22, 18, 12, 0.10);
+  --shadow: 0 12px 28px rgba(22, 18, 12, 0.12);
 }
 
 * {
@@ -109,87 +107,120 @@ h2 {
   gap: 10px;
 }
 
-.bag-stage {
+.physics-stage {
   position: relative;
-  height: 360px;
+  height: 392px;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
   background:
-    radial-gradient(circle at 18% 14%, rgba(243, 215, 207, 0.85), transparent 28%),
-    radial-gradient(circle at 86% 20%, rgba(201, 139, 43, 0.16), transparent 30%),
-    linear-gradient(180deg, #fffdf9 0%, #efe8dc 100%);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(246, 241, 232, 0.96) 55%, rgba(231, 223, 209, 0.98) 100%),
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.035) 0 1px, transparent 1px 18px);
   box-shadow: var(--shadow);
+  touch-action: none;
+}
+
+.bag-shell,
+.physics-items {
+  position: absolute;
+  inset: 0;
+}
+
+.bag-shell {
+  pointer-events: none;
+}
+
+.physics-items {
+  z-index: 4;
 }
 
 .bag-handle {
   position: absolute;
-  top: 34px;
+  z-index: 2;
+  top: 36px;
   left: 50%;
-  width: 48%;
-  height: 118px;
+  width: min(214px, 52%);
+  height: 120px;
   transform: translateX(-50%);
   border: 14px solid var(--ink);
   border-bottom: 0;
-  border-radius: 110px 110px 0 0;
-  opacity: 0.98;
+  border-radius: 120px 120px 0 0;
 }
 
-.bag-body {
+.bag-back {
   position: absolute;
-  right: 32px;
-  bottom: 22px;
-  left: 32px;
-  height: 245px;
-  overflow: hidden;
+  z-index: 1;
+  right: 30px;
+  bottom: 24px;
+  left: 30px;
+  height: 254px;
   border: 10px solid var(--ink);
-  border-radius: 30px 30px 20px 20px;
+  border-radius: 32px 32px 22px 22px;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(246, 238, 224, 0.92)),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(244, 236, 222, 0.90)),
     repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.035) 0 1px, transparent 1px 16px);
   clip-path: polygon(8% 0, 92% 0, 100% 100%, 0 100%);
 }
 
+.bag-front {
+  position: absolute;
+  z-index: 6;
+  right: 30px;
+  bottom: 24px;
+  left: 30px;
+  height: 126px;
+  border: 10px solid var(--ink);
+  border-top: 0;
+  border-radius: 0 0 22px 22px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.78), rgba(238, 229, 214, 0.9)),
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.026) 0 1px, transparent 1px 16px);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+}
+
 .bag-lip {
   position: absolute;
-  z-index: 3;
-  top: 12px;
-  right: 18px;
-  left: 18px;
-  height: 12px;
+  z-index: 7;
+  right: 50px;
+  bottom: 142px;
+  left: 50px;
+  height: 13px;
   border-radius: 999px;
   background: rgba(21, 21, 21, 0.88);
 }
 
-.bag-items {
+.physics-product {
   position: absolute;
-  inset: 30px 26px 20px;
-  z-index: 2;
-}
-
-.bag-product {
-  position: absolute;
-  left: var(--x);
-  top: var(--y);
-  width: var(--size);
-  aspect-ratio: 1;
-  transform: translate(-50%, -50%) rotate(var(--rot));
+  left: 0;
+  top: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  width: var(--item-size, 92px);
+  height: var(--item-size, 92px);
   border: 4px solid #ffffff;
   border-radius: 16px;
   background: #efede7;
-  box-shadow: 0 14px 20px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 14px 22px rgba(0, 0, 0, 0.19);
+  cursor: grab;
+  user-select: none;
+  will-change: transform;
 }
 
-.bag-product img {
+.physics-product:active {
+  cursor: grabbing;
+}
+
+.physics-product img {
   width: 100%;
   height: 100%;
   border-radius: 12px;
   object-fit: cover;
+  pointer-events: none;
 }
 
-.bag-product.no-image {
-  display: grid;
-  place-items: center;
+.physics-product.no-image {
   padding: 10px;
   color: var(--muted);
   font-weight: 800;
@@ -198,13 +229,15 @@ h2 {
 
 .bag-empty {
   position: absolute;
-  inset: 54px 32px 32px;
+  z-index: 8;
+  inset: 164px 44px 68px;
   display: grid;
   place-items: center;
   color: #8c877c;
   font-size: 18px;
   font-weight: 760;
   text-align: center;
+  pointer-events: none;
 }
 
 .bag-empty[hidden] {
