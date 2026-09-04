@@ -16,6 +16,7 @@ InMyCart는 쇼핑몰 장바구니에 담긴 아이템을 Chrome 오른쪽 Side 
 - 장바구니 아이템 사진이 위에서 떨어지고, 서로 부딪히고, 가방 벽/바닥과 충돌
 - 가방 안 상품 사진 드래그 및 던지기
 - content script, background service worker, side panel 간 메시지 통신
+- 마지막으로 읽은 MUSINSA 장바구니를 `chrome.storage.local`에 보존
 
 ## 폴더 구조
 
