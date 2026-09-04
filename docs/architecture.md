@@ -1,8 +1,8 @@
-# InMyCart Architecture
+# CartPeek Architecture
 
 ## Goal
 
-InMyCart reads product data from a shopping cart page and renders the normalized cart as a visual bag in Chrome's right Side Panel. The first parser targets MUSINSA cart pages, while the code is arranged so Coupang, Olive Young, and other shopping sites can be added later without rewriting the side panel.
+CartPeek reads product data from a shopping cart page and renders the normalized cart as a visual bag in Chrome's right Side Panel. The first parser targets MUSINSA cart pages, while the code is arranged so Coupang, Olive Young, and other shopping sites can be added later without rewriting the side panel.
 
 ## Flow
 
