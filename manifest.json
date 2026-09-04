@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Cart Lens MVP",
+  "description": "Reads a shopping cart page and shows the items in a Chrome side panel.",
+  "version": "0.1.0",
+  "minimum_chrome_version": "116",
+  "permissions": ["activeTab", "sidePanel", "storage", "tabs"],
+  "host_permissions": [
+    "https://musinsa.com/*",
+    "https://*.musinsa.com/*"
+  ],
+  "action": {
+    "default_title": "Open Cart Lens"
+  },
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "src/sidepanel/sidepanel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://musinsa.com/*",
+        "https://*.musinsa.com/*"
+      ],
+      "js": [
+        "src/content/parsers.js",
+        "src/content/content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

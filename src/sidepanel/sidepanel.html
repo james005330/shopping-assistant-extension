@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cart Lens</title>
+    <link rel="stylesheet" href="sidepanel.css">
+  </head>
+  <body>
+    <main class="app">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Cart Lens</p>
+          <h1>장바구니 분석</h1>
+        </div>
+        <button id="refreshButton" class="icon-button" type="button" title="새로고침" aria-label="새로고침">
+          ↻
+        </button>
+      </header>
+
+      <section id="status" class="status">
+        무신사 장바구니 페이지를 열면 상품을 자동으로 읽어옵니다.
+      </section>
+
+      <section class="summary" aria-label="장바구니 요약">
+        <div>
+          <span id="itemCount">0</span>
+          <small>상품</small>
+        </div>
+        <div>
+          <span id="knownPriceCount">0</span>
+          <small>가격 인식</small>
+        </div>
+      </section>
+
+      <section class="analysis" aria-label="간단 분석">
+        <h2>빠른 분석</h2>
+        <ul id="insights"></ul>
+      </section>
+
+      <section class="items" aria-label="장바구니 상품">
+        <div class="section-title">
+          <h2>상품</h2>
+          <span id="parserLabel"></span>
+        </div>
+        <div id="itemsList" class="items-list"></div>
+      </section>
+    </main>
+
+    <template id="itemTemplate">
+      <article class="item">
+        <img class="item-image" alt="">
+        <div class="item-body">
+          <p class="item-brand"></p>
+          <h3 class="item-name"></h3>
+          <p class="item-option"></p>
+          <div class="item-meta">
+            <strong class="item-price"></strong>
+            <span class="item-quantity"></span>
+          </div>
+        </div>
+      </article>
+    </template>
+
+    <script src="sidepanel.js"></script>
+  </body>
+</html>
