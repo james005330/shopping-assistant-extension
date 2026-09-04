@@ -190,7 +190,6 @@ h2 {
 .bag-empty[hidden] {
   display: none;
 }
-
 .bag-footer {
   display: flex;
   align-items: center;
@@ -207,30 +206,6 @@ h2 {
   display: block;
   color: var(--ink);
   font-size: 17px;
-}
-
-.bag-footer small {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.analysis {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-  padding: 12px;
-}
-
-.analysis ul {
-  display: grid;
-  gap: 8px;
-  margin: 10px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.analysis li {
-  color: #343434;
 }
 
 .section-title {
