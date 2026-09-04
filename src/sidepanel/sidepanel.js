@@ -78,6 +78,42 @@ function itemKey(item) {
   return item.id || item.url || item.name || JSON.stringify(item);
 }
 
+function productUrl(item) {
+  if (!item?.url) {
+    return null;
+  }
+
+  try {
+    const url = new URL(item.url, "https://www.musinsa.com");
+    return ["http:", "https:"].includes(url.protocol) ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function openProductPage(item) {
+  const url = productUrl(item);
+  if (!url) {
+    return;
+  }
+
+  if (Number.isInteger(state.activeTabId)) {
+    chrome.tabs.update(state.activeTabId, { url }, () => {
+      if (chrome.runtime.lastError) {
+        chrome.tabs.create({ url });
+      }
+    });
+    return;
+  }
+
+  chrome.tabs.create({ url });
+}
+
+function wakeBody(body) {
+  const Matter = getMatter();
+  Matter?.Sleeping?.set(body, false);
+}
+
 function clamp(value, min, max) {
   if (!Number.isFinite(value)) {
     return min;
@@ -103,7 +139,7 @@ function ensurePhysics() {
   }
 
   if (!physics.engine) {
-    physics.engine = Matter.Engine.create({ enableSleeping: true });
+    physics.engine = Matter.Engine.create({ enableSleeping: false });
     physics.engine.gravity.y = 0.92;
     physics.engine.gravity.x = 0;
     rebuildWalls();
@@ -186,6 +222,11 @@ function makePhysicsElement(item, size) {
   tile.title = item.name || "장바구니 아이템";
   tile.style.setProperty("--item-size", `${size}px`);
 
+  if (productUrl(item)) {
+    tile.setAttribute("role", "link");
+    tile.tabIndex = 0;
+  }
+
   if (item.imageUrl) {
     const image = document.createElement("img");
     image.src = item.imageUrl;
@@ -246,6 +287,8 @@ function addPhysicsItem(item, index, count) {
 }
 
 function attachDragHandlers(key, element) {
+  const clickMoveTolerance = 6;
+
   element.addEventListener("pointerdown", (event) => {
     const entry = physics.items.get(key);
     const Matter = getMatter();
@@ -256,13 +299,22 @@ function attachDragHandlers(key, element) {
     event.preventDefault();
     element.setPointerCapture(event.pointerId);
     const point = pointerPoint(event);
-    physics.drag = { key, pointerId: event.pointerId, previous: point, startedAt: performance.now() };
+    physics.drag = {
+      key,
+      pointerId: event.pointerId,
+      start: point,
+      previous: point,
+      grabOffset: {
+        x: entry.body.position.x - point.x,
+        y: entry.body.position.y - point.y
+      },
+      moved: false
+    };
     entry.dragHeartbeatAt = Date.now();
+    wakeBody(entry.body);
     Matter.Body.setStatic(entry.body, true);
-    Matter.Body.setPosition(entry.body, point);
     Matter.Body.setVelocity(entry.body, { x: 0, y: 0 });
     Matter.Body.setAngularVelocity(entry.body, 0);
-    element.classList.add("is-dragging");
   });
 
   element.addEventListener("pointermove", (event) => {
@@ -274,13 +326,30 @@ function attachDragHandlers(key, element) {
     }
 
     const point = pointerPoint(event);
+    const distanceFromStart = Math.hypot(point.x - drag.start.x, point.y - drag.start.y);
+    if (!drag.moved && distanceFromStart < clickMoveTolerance) {
+      return;
+    }
+
+    drag.moved = true;
+    const nextPosition = clampPointToStage({
+      x: point.x + drag.grabOffset.x,
+      y: point.y + drag.grabOffset.y
+    }, entry.size);
+    const previousPosition = clampPointToStage({
+      x: drag.previous.x + drag.grabOffset.x,
+      y: drag.previous.y + drag.grabOffset.y
+    }, entry.size);
+
     entry.lastDragPoint = {
-      x: point.x - drag.previous.x,
-      y: point.y - drag.previous.y
+      x: nextPosition.x - previousPosition.x,
+      y: nextPosition.y - previousPosition.y
     };
     drag.previous = point;
     entry.dragHeartbeatAt = Date.now();
-    Matter.Body.setPosition(entry.body, clampPointToStage(point, entry.size));
+    wakeBody(entry.body);
+    Matter.Body.setPosition(entry.body, nextPosition);
+    element.classList.add("is-dragging");
   });
 
   const endDrag = (event) => {
@@ -292,19 +361,36 @@ function attachDragHandlers(key, element) {
     }
 
     const velocity = entry.lastDragPoint || { x: 0, y: 0 };
+    const shouldOpen = event.type === "pointerup" && !drag.moved;
     Matter.Body.setStatic(entry.body, false);
+    wakeBody(entry.body);
     Matter.Body.setVelocity(entry.body, {
       x: clamp(velocity.x * 0.42, -12, 12),
-      y: clamp(velocity.y * 0.42, -12, 12)
+      y: Math.abs(velocity.y) < 0.5 ? 0.75 : clamp(velocity.y * 0.42, -12, 12)
     });
-    Matter.Body.setAngularVelocity(entry.body, clamp(velocity.x * 0.006, -0.18, 0.18));
+    Matter.Body.setAngularVelocity(entry.body, drag.moved ? clamp(velocity.x * 0.006, -0.18, 0.18) : 0);
     entry.lastDragPoint = null;
     element.classList.remove("is-dragging");
     physics.drag = null;
+
+    if (shouldOpen) {
+      openProductPage(entry.item);
+    }
   };
 
   element.addEventListener("pointerup", endDrag);
   element.addEventListener("pointercancel", endDrag);
+  element.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    event.preventDefault();
+    const entry = physics.items.get(key);
+    if (entry) {
+      openProductPage(entry.item);
+    }
+  });
 }
 
 function pointerPoint(event) {
@@ -336,7 +422,8 @@ function releaseStuckDrag() {
     }
 
     Matter.Body.setStatic(entry.body, false);
-    Matter.Body.setVelocity(entry.body, { x: 0, y: 0 });
+    wakeBody(entry.body);
+    Matter.Body.setVelocity(entry.body, { x: 0, y: 0.75 });
     Matter.Body.setAngularVelocity(entry.body, 0);
   });
 }
