@@ -11,12 +11,16 @@
   function firstText(root, selectors) {
     for (const selector of selectors) {
       const node = root.querySelector(selector);
-      const text = cleanText(node?.innerText || node?.textContent || node?.getAttribute?.("aria-label"));
+      const text = cleanText(node?.value || node?.innerText || node?.textContent || node?.getAttribute?.("aria-label"));
       if (text) {
         return text;
       }
     }
     return "";
+  }
+
+  function dataText(root, name) {
+    return cleanText(root.getAttribute(`data-${name}`));
   }
 
   function firstImage(root) {
@@ -62,8 +66,47 @@
     });
   }
 
+  function uniqueNodes(nodes) {
+    return [...new Set(nodes)];
+  }
+
+  function collectRows(selectors) {
+    const candidates = [];
+    for (const selector of selectors) {
+      try {
+        candidates.push(...document.querySelectorAll(selector));
+      } catch {
+        // Some browsers may not support newer selector syntax in content scripts yet.
+      }
+    }
+    return uniqueNodes(candidates);
+  }
+
+  function validCandidateRows(nodes) {
+    return nodes.filter((node) => {
+      const text = cleanText(node.innerText || node.textContent);
+      const dataName = dataText(node, "item-name");
+      const hasProductLink = Boolean(node.querySelector("a[href*='/app/goods/'], a[href*='/products/']"));
+      const hasPrice = WON_PRICE_PATTERN.test(text) || GLOBAL_PRICE_PATTERN.test(text);
+      return dataName || (text.length > 12 && (hasProductLink || hasPrice));
+    });
+  }
+
   function findCandidateRows() {
-    const preferredSelectors = [
+    const cartDataRows = validCandidateRows(collectRows([
+      "[data-item-list-id='cart_list']",
+      "[data-item-list-id='cart']",
+      "[data-item-list-id*='cart'][data-item-name]",
+      "[data-item-id][data-item-name][data-item-list-id*='cart']"
+    ]));
+
+    if (cartDataRows.length) {
+      return cartDataRows;
+    }
+
+    const fallbackSelectors = [
+      "[data-item-id][data-item-name]",
+      "[data-item-name]",
       "[data-cart-item-id]",
       "[data-cart-no]",
       "[data-goods-no]",
@@ -76,28 +119,14 @@
       "li:has(a[href*='/products/'])"
     ];
 
-    const candidates = [];
-    for (const selector of preferredSelectors) {
-      try {
-        candidates.push(...document.querySelectorAll(selector));
-      } catch {
-        // Some browsers may not support :has in content scripts yet.
-      }
-    }
-
-    return candidates.filter((node) => {
-      const text = cleanText(node.innerText || node.textContent);
-      const hasProductLink = Boolean(node.querySelector("a[href*='/app/goods/'], a[href*='/products/']"));
-      const hasPrice = WON_PRICE_PATTERN.test(text) || GLOBAL_PRICE_PATTERN.test(text);
-      return text.length > 12 && (hasProductLink || hasPrice);
-    });
+    return validCandidateRows(collectRows(fallbackSelectors));
   }
 
   function parseMusinsaCart() {
     const rows = findCandidateRows();
 
     const items = rows.map((row) => {
-      const name = firstText(row, [
+      const name = dataText(row, "item-name") || firstText(row, [
         "[data-testid*='goods'][data-testid*='name']",
         "[class*='goods'][class*='name']",
         "[class*='Goods'][class*='Name']",
@@ -107,13 +136,13 @@
         "a[href*='/products/']"
       ]);
 
-      const brand = firstText(row, [
+      const brand = dataText(row, "item-brand") || firstText(row, [
         "[data-testid*='brand']",
         "[class*='brand']",
         "[class*='Brand']"
       ]);
 
-      const option = firstText(row, [
+      const option = dataText(row, "item-variant").replace(/\^/g, " / ") || firstText(row, [
         "[data-testid*='option']",
         "[class*='option']",
         "[class*='Option']",
@@ -129,7 +158,7 @@
         "[class*='Amount']"
       ]) || textPrice(row);
 
-      const quantityText = firstText(row, [
+      const quantityText = dataText(row, "quantity") || firstText(row, [
         "input[type='number']",
         "[data-testid*='quantity']",
         "[class*='quantity']",
@@ -137,7 +166,7 @@
       ]);
 
       return {
-        id: stableId([name, brand, option, price, firstLink(row)]),
+        id: dataText(row, "item-id") || stableId([name, brand, option, price, firstLink(row)]),
         name,
         brand,
         option,
@@ -154,7 +183,7 @@
       url: location.href,
       parsedAt: new Date().toISOString(),
       items: dedupeItems(items),
-      parserVersion: "musinsa.heuristic.v1"
+      parserVersion: "musinsa.data-item.v2"
     };
   }
 
