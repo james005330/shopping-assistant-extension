@@ -1,6 +1,7 @@
 (function registerCartParsers() {
   const WON_PRICE_PATTERN = /([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)\s*원/;
   const GLOBAL_PRICE_PATTERN = /[$€£]\s?[0-9]+(?:[.,][0-9]{2})?/;
+  const OLIVEYOUNG_IMAGE_BASE = "https://image.oliveyoung.co.kr/cfimages/cf-goods/uploads/images/thumbnails/220/";
 
   function cleanText(value) {
     return String(value || "")
@@ -23,17 +24,27 @@
     return cleanText(root.getAttribute(`data-${name}`));
   }
 
+  function inputValue(root, selector) {
+    const input = root.querySelector(selector);
+    return cleanText(input?.value || input?.getAttribute?.("value"));
+  }
+
   function formatWonFromData(value) {
-    const number = Number(cleanText(value));
+    const number = Number(cleanText(value).replace(/,/g, ""));
     return Number.isFinite(number) && number > 0
       ? `${number.toLocaleString("ko-KR")}원`
       : "";
   }
 
   function firstImage(root) {
-    const image = root.querySelector("img[src], img[data-src], img[data-original]");
-    const src = image?.getAttribute("src") || image?.getAttribute("data-src") || image?.getAttribute("data-original");
-    return src ? new URL(src, location.href).href : "";
+    const images = [...root.querySelectorAll("img[src], img[data-src], img[data-original]")];
+    for (const image of images) {
+      const src = image.getAttribute("data-original") || image.getAttribute("data-src") || image.getAttribute("src");
+      if (src && !src.includes("pc_loading.gif")) {
+        return new URL(src, location.href).href;
+      }
+    }
+    return "";
   }
 
   function firstLink(root) {
@@ -237,11 +248,126 @@
     );
   }
 
+  function scriptStringValue(root, key) {
+    const text = [...root.querySelectorAll("script")]
+      .map((script) => script.textContent || "")
+      .join("\n");
+    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = text.match(new RegExp(`cartItem\\.${escaped}\\s*=\\s*[\"']([^\"']*)[\"']`));
+    return cleanText(match?.[1]);
+  }
+
+  function scriptNumberValue(root, key) {
+    const text = [...root.querySelectorAll("script")]
+      .map((script) => script.textContent || "")
+      .join("\n");
+    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = text.match(new RegExp(`cartItem\\.${escaped}\\s*=\\s*(?:parseInt\\()?["]?([0-9,]+)["]?`));
+    return cleanText(match?.[1]);
+  }
+
+  function oliveYoungGoodsNoFromHref(root) {
+    const href = root.querySelector("a[href*='clickGoodsDetail']")?.getAttribute("href") || "";
+    const match = href.match(/clickGoodsDetail\(['\"]([^'\"]+)/);
+    return cleanText(match?.[1]);
+  }
+
+  function oliveYoungGoodsUrl(goodsNo) {
+    return goodsNo
+      ? `https://www.oliveyoung.co.kr/store/goods/getGoodsDetail.do?goodsNo=${encodeURIComponent(goodsNo)}`
+      : "";
+  }
+
+  function oliveYoungImageFromScript(root) {
+    const path = scriptStringValue(root, "thnlPathNm");
+    return path ? `${OLIVEYOUNG_IMAGE_BASE}${path}` : "";
+  }
+
+  function oliveYoungPrice(root) {
+    return formatWonFromData(inputValue(root, "input[name='saleCpnDcPrc']")) ||
+      formatWonFromData(scriptNumberValue(root, "saleCpnDcPrc")) ||
+      formatWonFromData(inputValue(root, "input[name='s_sale_prc']")) ||
+      formatWonFromData(scriptNumberValue(root, "salePrc")) ||
+      textPrice(root);
+  }
+
+  function oliveYoungQuantity(root) {
+    const selected = firstText(root, ["select option:checked"]);
+    const selectValue = inputValue(root, "select");
+    const checkboxQty = cleanText(root.querySelector("input[ordqty]")?.getAttribute("ordqty"));
+    const scriptQty = scriptNumberValue(root, "ordQty");
+    return parseNumberFromText(selected || selectValue || checkboxQty || scriptQty, 1);
+  }
+
+  function parseOliveYoungItem(row) {
+    const goodsNo = inputValue(row, "input[name='s_goods_no']") ||
+      oliveYoungGoodsNoFromHref(row) ||
+      scriptStringValue(row, "goodsNo");
+    const itemNo = inputValue(row, "input[name='s_item_no']") || scriptStringValue(row, "itemNo");
+    const cartNo = inputValue(row, "input[name='s_cart_no']") || scriptStringValue(row, "cartNo");
+    const brand = firstText(row, [".prd_name #brandNm", "#brandNm"]) || scriptStringValue(row, "onlBrndNm");
+    const name = firstText(row, [".prd_name #goodsNm", "#goodsNm"]) || scriptStringValue(row, "goodsNm");
+    const option = firstText(row, [".prd_opt span"]) || scriptStringValue(row, "itemNm");
+    const price = oliveYoungPrice(row);
+    const imageUrl = firstImage(row) || oliveYoungImageFromScript(row);
+    const url = oliveYoungGoodsUrl(goodsNo);
+    const category = scriptStringValue(row, "categoryNm");
+    const quantity = oliveYoungQuantity(row);
+
+    return {
+      id: stableId(["oliveyoung", cartNo, goodsNo, itemNo]) || stableId(["oliveyoung", name, option, price]),
+      name,
+      brand,
+      option,
+      price,
+      category,
+      quantity,
+      imageUrl,
+      url
+    };
+  }
+
+  function findOliveYoungRows() {
+    return collectRows([
+      "#Container .tbl_cont_area",
+      ".cart_tbl .tbl_cont_area",
+      ".tbl_cont_area"
+    ]).filter((row) => {
+      const hasProductInfo = Boolean(row.querySelector(".prd_info") || row.querySelector("input[name='s_goods_no']"));
+      const hasName = Boolean(row.querySelector("#goodsNm") || scriptStringValue(row, "goodsNm"));
+      return hasProductInfo && hasName;
+    });
+  }
+
+  function parseOliveYoungCart() {
+    const items = findOliveYoungRows()
+      .map(parseOliveYoungItem)
+      .filter((item) => item.name || item.price || item.url);
+
+    return {
+      site: "oliveyoung",
+      label: "OLIVEYOUNG",
+      url: location.href,
+      parsedAt: new Date().toISOString(),
+      items: dedupeItems(items),
+      parserVersion: "oliveyoung.cart-table.v1"
+    };
+  }
+
+  function isOliveYoungCart(url) {
+    const hostname = url.hostname.replace(/^www\./, "");
+    const path = url.pathname.toLowerCase();
+    return hostname.endsWith("oliveyoung.co.kr") && path.includes("/store/cart/");
+  }
+
   window.CartParsers = {
     resolve(url = location.href) {
       const parsed = new URL(url);
       if (isMusinsaCart(parsed)) {
         return parseMusinsaCart;
+      }
+      if (isOliveYoungCart(parsed)) {
+        return parseOliveYoungCart;
       }
       return null;
     },
